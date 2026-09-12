@@ -126,13 +126,13 @@ export default function AdminPage() {
     album: string
   ): Promise<UploadResult> => {
     try {
-      // ۱. آپلود مستقیم از مرورگر به Vercel Blob (بدون محدودیت حجم)
+      // ۱. آپلود مستقیم به Vercel Blob
       const blob = await upload(file.name, file, {
         access: 'public',
         handleUploadUrl: '/api/upload-token',
       });
 
-      // ۲. ذخیره URL و متادیتا در GitHub
+      // ۲. ذخیره URL Blob در GitHub
       const res = await fetch('/api/save-song', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

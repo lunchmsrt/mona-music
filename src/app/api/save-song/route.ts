@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       title,
       artist: artist || 'Mona',
       album: album || 'Mona Music',
-      audioUrl,
+      audioUrl: audioUrl, // ← این آدرس Blob است، نه GitHub Raw
       coverUrl: 'https://github.com/lunchmsrt/mona-music/blob/main/public/mona/qermezdasht.jpg',
       source: 'blob',
       uploadedAt: new Date().toISOString(),
