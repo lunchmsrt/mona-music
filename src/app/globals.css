@@ -1,3 +1,4 @@
+@import url('https://v1.fontapi.ir/css/BTitr');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -127,4 +128,13 @@
   html {
     @apply font-sans;
   }
+}
+body,
+button,
+input,
+textarea,
+select {
+  font-family: 'B Titr', system-ui, -apple-system, sans-serif !important;
+  letter-spacing: 0;
+  font-weight: normal;
 }
