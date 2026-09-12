@@ -11,16 +11,14 @@ import { Button } from '@/components/ui/button';
 export default function Home() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
-  const [lastSync, setLastSync] = useState<string>('');
 
   const loadSongs = async () => {
     try {
-      const res = await fetch('/api/songs');
+      const res = await fetch('/api/songs-github');
       const data = await res.json();
       setSongs(data.songs || []);
-      setLastSync(new Date().toLocaleTimeString('fa-IR'));
     } catch (err) {
-      console.error('خطا در خواندن آهنگ‌ها:', err);
+      console.error('خطا در خواندن آهنگها:', err);
     } finally {
       setLoading(false);
     }
@@ -28,18 +26,15 @@ export default function Home() {
 
   useEffect(() => {
     loadSongs();
-    const interval = setInterval(loadSongs, 5 * 60 * 1000);
+    const interval = setInterval(loadSongs, 60 * 1000); // هر ۱ دقیقه
     return () => clearInterval(interval);
   }, []);
 
   return (
     <>
-      {/* پس‌زمینه اسلایدشو */}
       <BackgroundSlideshow />
-
       <main className="relative min-h-screen p-6 pb-40">
         <div className="mx-auto max-w-6xl">
-          {/* هدر */}
           <header className="mb-10 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-purple-600 shadow-lg shadow-primary/30">
@@ -50,54 +45,31 @@ export default function Home() {
                   Mona Music
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {lastSync ? `آخرین همگام‌سازی: ${lastSync}` : 'در حال بارگذاری...'}
+                  {songs.length} آهنگ
                 </p>
               </div>
             </div>
-
             <Button variant="outline" size="sm" onClick={loadSongs}>
               <RefreshCw className="mr-2 h-4 w-4" />
-              به‌روزرسانی
+              بهروزرسانی
             </Button>
           </header>
 
-          {/* بنر خوش‌آمد */}
-          <div className="mb-8 overflow-hidden rounded-2xl bg-black/30 p-8 backdrop-blur-xl">
-            <div className="flex items-center gap-8">
-              <div className="relative">
-                <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-primary to-purple-500 opacity-60 blur-2xl" />
-                <img
-                  src="/mona/qermezdasht.jpg"
-                  alt="Mona"
-                  className="relative h-32 w-32 rounded-full border-4 border-white/30 object-cover shadow-2xl"
-                />
-              </div>
-              <div>
-                <h2 className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-3xl font-bold text-transparent">
-                  به Mona Music خوش آمدید
-                </h2>
-                <p className="mt-2 text-lg text-muted-foreground">
-                  دنیای موسیقی شخصی شما ✨
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* لیست آهنگ‌ها */}
           {loading ? (
             <div className="flex h-64 items-center justify-center text-muted-foreground">
-              در حال بارگذاری آهنگ‌ها...
+              در حال بارگذاری آهنگها...
             </div>
           ) : songs.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center gap-4 text-muted-foreground">
-              <p>هنوز آهنگی همگام‌سازی نشده است.</p>
-              <p className="text-sm">منتظر بمانید تا Cron هر ۵ دقیقه یکبار اجرا شود.</p>
+              <p>هنوز آهنگی آپلود نشده است.</p>
+              <p className="text-sm">
+                از <a href="/admin" className="text-primary underline">داشبورد مدیریت</a> آهنگ اضافه کنید.
+              </p>
             </div>
           ) : (
             <SongList songs={songs} />
           )}
         </div>
-
         <AudioPlayer />
       </main>
     </>
