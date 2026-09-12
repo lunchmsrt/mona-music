@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { upload } from '@vercel/blob/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -117,44 +118,53 @@ export default function AdminPage() {
     }
   };
 
-  // ---------- آپلود یک آهنگ ----------
+  // ---------- آپلود یک آهنگ (مستقیم به Blob) ----------
   const uploadOneSong = async (
     file: File,
     title: string,
     artist: string,
     album: string
   ): Promise<UploadResult> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('title', title || file.name.replace(/\.[^/.]+$/, ''));
-    formData.append('artist', artist || 'Mona');
-    formData.append('album', album || 'Mona Music');
-    formData.append('password', password);
-
-    const useBlob = file.size > 4 * 1024 * 1024;
-    const endpoint = useBlob ? '/api/upload-blob' : '/api/upload-github';
-
     try {
-      const res = await fetch(endpoint, { method: 'POST', body: formData });
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        return {
-          filename: file.name,
-          success: false,
-          message: `خطای سرور (${res.status}) — حجم: ${(file.size / 1024 / 1024).toFixed(1)}MB`,
-        };
-      }
+      // ۱. آپلود مستقیم از مرورگر به Vercel Blob (بدون محدودیت حجم)
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload-token',
+      });
+
+      // ۲. ذخیره URL و متادیتا در GitHub
+      const res = await fetch('/api/save-song', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password,
+          title: title || file.name.replace(/\.[^/.]+$/, ''),
+          artist: artist || 'Mona',
+          album: album || 'Mona Music',
+          audioUrl: blob.url,
+        }),
+      });
+
       const data = await res.json();
+
       if (res.ok) {
         return {
           filename: file.name,
           success: true,
-          message: `${data.message} ${useBlob ? '(Blob)' : '(GitHub)'}`,
+          message: `✅ آپلود موفق (${(file.size / 1024 / 1024).toFixed(1)} مگابایت)`,
         };
       }
-      return { filename: file.name, success: false, message: data.error || 'خطا' };
+      return {
+        filename: file.name,
+        success: false,
+        message: data.error || 'خطا در ذخیره',
+      };
     } catch (err) {
-      return { filename: file.name, success: false, message: String(err) };
+      return {
+        filename: file.name,
+        success: false,
+        message: String(err),
+      };
     }
   };
 
@@ -296,7 +306,11 @@ export default function AdminPage() {
         if (res.ok) {
           newResults.push({ filename: file.name, success: true, message: 'موفق' });
         } else {
-          newResults.push({ filename: file.name, success: false, message: data.error || 'خطا' });
+          newResults.push({
+            filename: file.name,
+            success: false,
+            message: data.error || 'خطا',
+          });
         }
       } catch (err) {
         newResults.push({ filename: file.name, success: false, message: String(err) });
@@ -308,7 +322,7 @@ export default function AdminPage() {
     if (bgInputRef.current) bgInputRef.current.value = '';
     await loadBackgrounds();
     setBgLoading(false);
-    alert(`✅ ${newResults.filter(r => r.success).length} عکس آپلود شد`);
+    alert(`✅ ${newResults.filter((r) => r.success).length} عکس آپلود شد`);
   };
 
   const handleDeleteBackground = async (filename: string) => {
@@ -337,7 +351,9 @@ export default function AdminPage() {
             <h1 className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-3xl font-bold text-transparent">
               داشبورد مدیریت Mona Music
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">مدیریت آهنگ‌ها، آلبوم‌ها و پس‌زمینه‌ها</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              مدیریت آهنگ‌ها، آلبوم‌ها و پس‌زمینه‌ها
+            </p>
           </div>
         </header>
 
@@ -371,7 +387,6 @@ export default function AdminPage() {
 
             {/* ============ تب آهنگ‌ها ============ */}
             <TabsContent value="songs" className="mt-6 space-y-6">
-              {/* دکمه انتخاب حالت */}
               <div className="flex gap-2 rounded-lg border p-1">
                 <button
                   type="button"
@@ -399,7 +414,6 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              {/* فرم تکی */}
               {uploadMode === 'single' && (
                 <form onSubmit={handleSingleUpload} className="space-y-4 rounded-lg border p-4">
                   <h3 className="text-lg font-bold">➕ افزودن آهنگ</h3>
@@ -470,7 +484,6 @@ export default function AdminPage() {
                 </form>
               )}
 
-              {/* فرم گروهی */}
               {uploadMode === 'bulk' && (
                 <form onSubmit={handleBulkUpload} className="space-y-4 rounded-lg border p-4">
                   <h3 className="text-lg font-bold">➕ افزودن چند آهنگ</h3>
@@ -535,18 +548,18 @@ export default function AdminPage() {
                 </form>
               )}
 
-              {/* نوار پیشرفت */}
               {uploading && (
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>پیشرفت</span>
-                    <span>{done} از {total}</span>
+                    <span>
+                      {done} از {total}
+                    </span>
                   </div>
                   <Progress value={progress} />
                 </div>
               )}
 
-              {/* نتایج آپلود */}
               {results.length > 0 && (
                 <div className="space-y-1 rounded-lg border p-3">
                   <h4 className="text-sm font-bold">نتیجه آپلود:</h4>
@@ -555,7 +568,9 @@ export default function AdminPage() {
                       <div
                         key={i}
                         className={`flex items-center gap-2 rounded p-1.5 text-xs ${
-                          r.success ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                          r.success
+                            ? 'bg-green-500/10 text-green-500'
+                            : 'bg-red-500/10 text-red-500'
                         }`}
                       >
                         {r.success ? (
@@ -564,13 +579,15 @@ export default function AdminPage() {
                           <XCircle className="h-3.5 w-3.5 shrink-0" />
                         )}
                         <span className="truncate">{r.filename}</span>
+                        <span className="mr-auto truncate text-[10px] opacity-70">
+                          {r.message}
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* لیست آهنگ‌های موجود */}
               <div>
                 <h3 className="mb-3 text-lg font-bold">
                   🎵 آهنگ‌های موجود ({songs.length})
@@ -650,7 +667,8 @@ export default function AdminPage() {
                       setAlbumCover(f);
                       if (f) {
                         const reader = new FileReader();
-                        reader.onloadend = () => setAlbumCoverPreview(reader.result as string);
+                        reader.onloadend = () =>
+                          setAlbumCoverPreview(reader.result as string);
                         reader.readAsDataURL(f);
                       }
                     }}
@@ -687,7 +705,9 @@ export default function AdminPage() {
               </form>
 
               <div>
-                <h3 className="mb-3 text-lg font-bold">📀 آلبوم‌های موجود ({albums.length})</h3>
+                <h3 className="mb-3 text-lg font-bold">
+                  📀 آلبوم‌های موجود ({albums.length})
+                </h3>
                 {albums.length === 0 ? (
                   <p className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
                     هنوز آلبومی اضافه نشده
@@ -699,10 +719,16 @@ export default function AdminPage() {
                         key={a.id}
                         className="group relative overflow-hidden rounded-xl border bg-card"
                       >
-                        <img src={a.coverUrl} alt={a.name} className="aspect-square w-full object-cover" />
+                        <img
+                          src={a.coverUrl}
+                          alt={a.name}
+                          className="aspect-square w-full object-cover"
+                        />
                         <div className="p-2">
                           <p className="truncate text-sm font-semibold">{a.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">{a.artist}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {a.artist}
+                          </p>
                         </div>
                         <button
                           onClick={() => handleDeleteAlbum(a.id, a.name)}
@@ -719,7 +745,10 @@ export default function AdminPage() {
 
             {/* ============ تب پس‌زمینه ============ */}
             <TabsContent value="backgrounds" className="mt-6 space-y-6">
-              <form onSubmit={handleBackgroundUpload} className="space-y-4 rounded-lg border p-4">
+              <form
+                onSubmit={handleBackgroundUpload}
+                className="space-y-4 rounded-lg border p-4"
+              >
                 <h3 className="text-lg font-bold">🖼️ افزودن پس‌زمینه</h3>
                 <div>
                   <label className="mb-1 block text-sm font-medium">
@@ -774,9 +803,15 @@ export default function AdminPage() {
                         key={bg.name}
                         className="group relative overflow-hidden rounded-xl border bg-card"
                       >
-                        <img src={bg.url} alt={bg.name} className="aspect-video w-full object-cover" />
+                        <img
+                          src={bg.url}
+                          alt={bg.name}
+                          className="aspect-video w-full object-cover"
+                        />
                         <div className="p-2">
-                          <p className="truncate text-xs text-muted-foreground">{bg.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {bg.name}
+                          </p>
                         </div>
                         <button
                           onClick={() => handleDeleteBackground(bg.name)}
