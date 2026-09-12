@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,12 +14,29 @@ import {
   FolderUp,
   Files,
   Music2,
+  Image as ImageIcon,
+  Disc3,
+  Trash2,
 } from 'lucide-react';
 
 type UploadResult = {
   filename: string;
   success: boolean;
   message: string;
+};
+
+type Album = {
+  id: string;
+  name: string;
+  artist: string;
+  coverUrl: string;
+  createdAt: string;
+};
+
+type Background = {
+  name: string;
+  path: string;
+  url: string;
 };
 
 export default function AdminPage() {
@@ -32,20 +49,54 @@ export default function AdminPage() {
   const [total, setTotal] = useState(0);
   const [done, setDone] = useState(0);
 
-  // فرم تکی
   const [singleFile, setSingleFile] = useState<File | null>(null);
   const [singleTitle, setSingleTitle] = useState('');
-
-  // فرم گروهی
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
-
-  // فرم فولدری
   const [folderFiles, setFolderFiles] = useState<File[]>([]);
+
+  // آلبوم‌ها
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [albumName, setAlbumName] = useState('');
+  const [albumArtist, setAlbumArtist] = useState('');
+  const [albumCover, setAlbumCover] = useState<File | null>(null);
+  const [albumCoverPreview, setAlbumCoverPreview] = useState<string>('');
+  const [albumsLoading, setAlbumsLoading] = useState(false);
+
+  // پس‌زمینه‌ها
+  const [backgrounds, setBackgrounds] = useState<Background[]>([]);
+  const [bgFile, setBgFile] = useState<File | null>(null);
+  const [bgPreview, setBgPreview] = useState('');
+  const [bgLoading, setBgLoading] = useState(false);
 
   const bulkInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  // ---------- آپلود یک فایل ----------
+  useEffect(() => {
+    loadAlbums();
+    loadBackgrounds();
+  }, []);
+
+  const loadAlbums = async () => {
+    try {
+      const res = await fetch('/api/albums');
+      const data = await res.json();
+      setAlbums(data.albums || []);
+    } catch (err) {
+      console.error('خطا در خواندن آلبوم‌ها:', err);
+    }
+  };
+
+  const loadBackgrounds = async () => {
+    try {
+      const res = await fetch('/api/backgrounds');
+      const data = await res.json();
+      setBackgrounds(data.backgrounds || []);
+    } catch (err) {
+      console.error('خطا در خواندن پس‌زمینه‌ها:', err);
+    }
+  };
+
+  // ---------- آپلود آهنگ ----------
   const uploadOne = async (file: File, title: string): Promise<UploadResult> => {
     const formData = new FormData();
     formData.append('file', file);
@@ -55,33 +106,21 @@ export default function AdminPage() {
     formData.append('password', password);
 
     try {
-      const res = await fetch('/api/upload-github', {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await fetch('/api/upload-github', { method: 'POST', body: formData });
       const data = await res.json();
-
-      if (res.ok) {
-        return { filename: file.name, success: true, message: data.message };
-      }
-      return {
-        filename: file.name,
-        success: false,
-        message: data.error || 'خطای ناشناخته',
-      };
+      if (res.ok) return { filename: file.name, success: true, message: data.message };
+      return { filename: file.name, success: false, message: data.error || 'خطا' };
     } catch (err) {
       return { filename: file.name, success: false, message: String(err) };
     }
   };
 
-  // ---------- آپلود گروهی ----------
   const uploadMany = async (files: File[]) => {
     setLoading(true);
     setResults([]);
     setTotal(files.length);
     setDone(0);
     setProgress(0);
-
     const newResults: UploadResult[] = [];
 
     for (let i = 0; i < files.length; i++) {
@@ -89,17 +128,13 @@ export default function AdminPage() {
       const title = file.name.replace(/\.[^/.]+$/, '');
       const result = await uploadOne(file, title);
       newResults.push(result);
-
-      const percent = Math.round(((i + 1) / files.length) * 100);
-      setProgress(percent);
+      setProgress(Math.round(((i + 1) / files.length) * 100));
       setDone(i + 1);
       setResults([...newResults]);
     }
-
     setLoading(false);
   };
 
-  // ---------- آپلود تکی ----------
   const handleSingleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!singleFile) return;
@@ -108,7 +143,6 @@ export default function AdminPage() {
     setSingleTitle('');
   };
 
-  // ---------- آپلود گروهی ----------
   const handleBulkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (bulkFiles.length === 0) return;
@@ -117,7 +151,6 @@ export default function AdminPage() {
     if (bulkInputRef.current) bulkInputRef.current.value = '';
   };
 
-  // ---------- آپلود فولدری ----------
   const handleFolderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (folderFiles.length === 0) return;
@@ -126,7 +159,118 @@ export default function AdminPage() {
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
-  // ---------- استخراج نام فولدر از مسیر ----------
+  // ---------- آپلود آلبوم ----------
+  const handleAlbumSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!albumCover || !albumName) return;
+
+    setAlbumsLoading(true);
+    const formData = new FormData();
+    formData.append('file', albumCover);
+    formData.append('albumName', albumName);
+    formData.append('password', password);
+
+    try {
+      const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (res.ok) {
+        const saveRes = await fetch('/api/albums', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            password,
+            name: albumName,
+            artist: albumArtist || artist || 'Mona',
+            coverUrl: data.url,
+          }),
+        });
+
+        if (saveRes.ok) {
+          setAlbumName('');
+          setAlbumArtist('');
+          setAlbumCover(null);
+          setAlbumCoverPreview('');
+          await loadAlbums();
+          alert('✅ آلبوم با موفقیت ذخیره شد');
+        }
+      } else {
+        alert('❌ ' + (data.error || 'خطا در آپلود'));
+      }
+    } catch (err) {
+      alert('❌ خطا: ' + String(err));
+    } finally {
+      setAlbumsLoading(false);
+    }
+  };
+
+  const handleDeleteAlbum = async (id: string, name: string) => {
+    if (!confirm(`آیا از حذف آلبوم "${name}" مطمئنید؟`)) return;
+
+    try {
+      const res = await fetch('/api/albums', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, id }),
+      });
+      if (res.ok) {
+        await loadAlbums();
+      } else {
+        alert('خطا در حذف آلبوم');
+      }
+    } catch (err) {
+      alert('خطا: ' + String(err));
+    }
+  };
+
+  // ---------- آپلود پس‌زمینه ----------
+  const handleBackgroundSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bgFile || !password) return;
+
+    setBgLoading(true);
+    const formData = new FormData();
+    formData.append('file', bgFile);
+    formData.append('password', password);
+
+    try {
+      const res = await fetch('/api/backgrounds', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (res.ok) {
+        setBgFile(null);
+        setBgPreview('');
+        await loadBackgrounds();
+        alert('✅ عکس پس‌زمینه آپلود شد');
+      } else {
+        alert('❌ ' + (data.error || 'خطا'));
+      }
+    } catch (err) {
+      alert('❌ خطا: ' + String(err));
+    } finally {
+      setBgLoading(false);
+    }
+  };
+
+  const handleDeleteBackground = async (filename: string) => {
+    if (!confirm(`آیا از حذف "${filename}" مطمئنید؟`)) return;
+
+    try {
+      const res = await fetch('/api/backgrounds', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, filename }),
+      });
+      if (res.ok) {
+        await loadBackgrounds();
+      } else {
+        alert('خطا در حذف');
+      }
+    } catch (err) {
+      alert('خطا: ' + String(err));
+    }
+  };
+
   const getFolderName = (file: File) => {
     const path = (file as any).webkitRelativePath || '';
     const parts = path.split('/');
@@ -135,8 +279,7 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-background to-muted/20 p-6">
-      <div className="mx-auto max-w-3xl">
-        {/* هدر */}
+      <div className="mx-auto max-w-4xl">
         <header className="mb-8 flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-purple-600 shadow-lg shadow-primary/30">
             <Music2 className="h-7 w-7 text-white" />
@@ -146,12 +289,11 @@ export default function AdminPage() {
               داشبورد مدیریت Mona Music
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              آپلود تکی، گروهی یا فولدری به GitHub
+              آپلود آهنگ، مدیریت آلبوم و پس‌زمینه
             </p>
           </div>
         </header>
 
-        {/* فیلدهای مشترک */}
         <Card className="mb-6 space-y-4 p-6">
           <div>
             <label className="mb-1 block text-sm font-medium">رمز عبور Admin</label>
@@ -165,7 +307,7 @@ export default function AdminPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">خواننده (اختیاری)</label>
+              <label className="mb-1 block text-sm font-medium">خواننده پیش‌فرض</label>
               <input
                 type="text"
                 value={artist}
@@ -175,7 +317,7 @@ export default function AdminPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">آلبوم (اختیاری)</label>
+              <label className="mb-1 block text-sm font-medium">آلبوم پیش‌فرض</label>
               <input
                 type="text"
                 value={album}
@@ -187,10 +329,9 @@ export default function AdminPage() {
           </div>
         </Card>
 
-        {/* تب‌های آپلود */}
         <Card className="p-6">
           <Tabs defaultValue="single" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="single" className="gap-2">
                 <FileAudio className="h-4 w-4" />
                 تکی
@@ -203,9 +344,17 @@ export default function AdminPage() {
                 <FolderUp className="h-4 w-4" />
                 فولدری
               </TabsTrigger>
+              <TabsTrigger value="albums" className="gap-2">
+                <Disc3 className="h-4 w-4" />
+                آلبوم‌ها
+              </TabsTrigger>
+              <TabsTrigger value="backgrounds" className="gap-2">
+                <ImageIcon className="h-4 w-4" />
+                پس‌زمینه
+              </TabsTrigger>
             </TabsList>
 
-            {/* ---------- تب تکی ---------- */}
+            {/* تب تکی */}
             <TabsContent value="single" className="mt-6">
               <form onSubmit={handleSingleSubmit} className="space-y-4">
                 <div>
@@ -249,12 +398,12 @@ export default function AdminPage() {
               </form>
             </TabsContent>
 
-            {/* ---------- تب گروهی ---------- */}
+            {/* تب گروهی */}
             <TabsContent value="bulk" className="mt-6">
               <form onSubmit={handleBulkSubmit} className="space-y-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium">
-                    انتخاب چند فایل صوتی (Ctrl+کلیک)
+                    انتخاب چند فایل (Ctrl+کلیک)
                   </label>
                   <input
                     ref={bulkInputRef}
@@ -290,19 +439,17 @@ export default function AdminPage() {
               </form>
             </TabsContent>
 
-            {/* ---------- تب فولدری ---------- */}
+            {/* تب فولدری */}
             <TabsContent value="folder" className="mt-6">
               <form onSubmit={handleFolderSubmit} className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    انتخاب یک فولدر کامل
-                  </label>
+                  <label className="mb-1 block text-sm font-medium">انتخاب فولدر کامل</label>
                   <input
                     ref={folderInputRef}
                     type="file"
                     accept="audio/*"
                     multiple
-                    // @ts-expect-error webkitdirectory is not in React types
+                    // @ts-expect-error webkitdirectory
                     webkitdirectory="true"
                     directory="true"
                     onChange={(e) => setFolderFiles(Array.from(e.target.files || []))}
@@ -314,7 +461,7 @@ export default function AdminPage() {
                         فولدر: <span className="font-bold">{getFolderName(folderFiles[0])}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        تعداد فایل‌های صوتی: {folderFiles.length}
+                        تعداد فایل صوتی: {folderFiles.length}
                       </p>
                     </div>
                   )}
@@ -338,9 +485,215 @@ export default function AdminPage() {
                 </Button>
               </form>
             </TabsContent>
+
+            {/* تب آلبوم‌ها */}
+            <TabsContent value="albums" className="mt-6 space-y-6">
+              <form onSubmit={handleAlbumSubmit} className="space-y-4 rounded-lg border p-4">
+                <h3 className="text-lg font-bold">➕ افزودن آلبوم جدید</h3>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">نام آلبوم</label>
+                    <input
+                      type="text"
+                      value={albumName}
+                      onChange={(e) => setAlbumName(e.target.value)}
+                      required
+                      className="w-full rounded-lg border bg-background px-3 py-2"
+                      placeholder="مثلاً Belakhare"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">خواننده</label>
+                    <input
+                      type="text"
+                      value={albumArtist}
+                      onChange={(e) => setAlbumArtist(e.target.value)}
+                      className="w-full rounded-lg border bg-background px-3 py-2"
+                      placeholder="Majid Razavi"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium">عکس کاور</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setAlbumCover(f);
+                      if (f) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setAlbumCoverPreview(reader.result as string);
+                        reader.readAsDataURL(f);
+                      }
+                    }}
+                    required
+                    className="w-full rounded-lg border bg-background px-3 py-2 file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1 file:text-primary-foreground"
+                  />
+                </div>
+
+                {albumCoverPreview && (
+                  <div className="flex justify-center">
+                    <img
+                      src={albumCoverPreview}
+                      alt="پیش‌نمایش"
+                      className="h-40 w-40 rounded-xl object-cover shadow-lg"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={albumsLoading || !albumCover || !albumName || !password}
+                  className="w-full"
+                >
+                  {albumsLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      در حال ذخیره...
+                    </>
+                  ) : (
+                    <>
+                      <ImageIcon className="mr-2 h-4 w-4" />
+                      آپلود آلبوم
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <div>
+                <h3 className="mb-3 text-lg font-bold">
+                  📀 آلبوم‌های موجود ({albums.length})
+                </h3>
+
+                {albums.length === 0 ? (
+                  <p className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
+                    هنوز آلبومی اضافه نشده
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+                    {albums.map((a) => (
+                      <div
+                        key={a.id}
+                        className="group relative overflow-hidden rounded-xl border bg-card"
+                      >
+                        <img
+                          src={a.coverUrl}
+                          alt={a.name}
+                          className="aspect-square w-full object-cover"
+                        />
+                        <div className="p-2">
+                          <p className="truncate text-sm font-semibold">{a.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{a.artist}</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteAlbum(a.id, a.name)}
+                          className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 hover:bg-red-500"
+                          title="حذف"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-white" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* تب پس‌زمینه‌ها */}
+            <TabsContent value="backgrounds" className="mt-6 space-y-6">
+              <form onSubmit={handleBackgroundSubmit} className="space-y-4 rounded-lg border p-4">
+                <h3 className="text-lg font-bold">🖼️ افزودن عکس پس‌زمینه جدید</h3>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium">انتخاب عکس</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setBgFile(f);
+                      if (f) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setBgPreview(reader.result as string);
+                        reader.readAsDataURL(f);
+                      }
+                    }}
+                    required
+                    className="w-full rounded-lg border bg-background px-3 py-2 file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1 file:text-primary-foreground"
+                  />
+                </div>
+
+                {bgPreview && (
+                  <div className="flex justify-center">
+                    <img
+                      src={bgPreview}
+                      alt="پیش‌نمایش"
+                      className="h-48 w-96 rounded-xl object-cover shadow-lg"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={bgLoading || !bgFile || !password}
+                  className="w-full"
+                >
+                  {bgLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      در حال آپلود...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      آپلود پس‌زمینه
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <div>
+                <h3 className="mb-3 text-lg font-bold">
+                  🎨 پس‌زمینه‌های موجود ({backgrounds.length})
+                </h3>
+
+                {backgrounds.length === 0 ? (
+                  <p className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
+                    هنوز عکس پس‌زمینه‌ای اضافه نشده
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                    {backgrounds.map((bg) => (
+                      <div
+                        key={bg.name}
+                        className="group relative overflow-hidden rounded-xl border bg-card"
+                      >
+                        <img
+                          src={bg.url}
+                          alt={bg.name}
+                          className="aspect-video w-full object-cover"
+                        />
+                        <div className="p-2">
+                          <p className="truncate text-xs text-muted-foreground">{bg.name}</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteBackground(bg.name)}
+                          className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 hover:bg-red-500"
+                          title="حذف"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-white" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
           </Tabs>
 
-          {/* نوار پیشرفت */}
           {loading && (
             <div className="mt-6 space-y-2">
               <div className="flex justify-between text-xs text-muted-foreground">
@@ -353,7 +706,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* نتایج */}
           {results.length > 0 && (
             <div className="mt-6 space-y-2">
               <h3 className="text-sm font-bold">نتیجه آپلود:</h3>
@@ -373,19 +725,13 @@ export default function AdminPage() {
                       <XCircle className="h-4 w-4 shrink-0" />
                     )}
                     <span className="truncate">{r.filename}</span>
-                    <span className="mr-auto truncate text-[10px] opacity-70">
-                      {r.message}
-                    </span>
+                    <span className="mr-auto truncate text-[10px] opacity-70">{r.message}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
         </Card>
-
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          هر فایل به صورت جداگانه آپلود می‌شود تا محدودیت ۴.۵ مگابایتی Vercel رعایت شود.
-        </p>
       </div>
     </main>
   );

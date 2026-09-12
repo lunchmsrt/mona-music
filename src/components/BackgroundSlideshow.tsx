@@ -2,33 +2,56 @@
 
 import { useState, useEffect } from 'react';
 
-const slides = [
-  '/mona/qermezdasht.jpg',
-  '/mona/zarddasht.jpg',
-];
+interface Background {
+  name: string;
+  path: string;
+  url: string;
+}
 
 export function BackgroundSlideshow() {
+  const [backgrounds, setBackgrounds] = useState<Background[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % slides.length);
-    }, 20000);
-
-    return () => clearInterval(interval);
+    const load = async () => {
+      try {
+        const res = await fetch('/api/backgrounds');
+        const data = await res.json();
+        setBackgrounds(data.backgrounds || []);
+      } catch (err) {
+        console.error('خطا در خواندن پس‌زمینه‌ها:', err);
+      }
+    };
+    load();
+    const reload = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(reload);
   }, []);
+
+  useEffect(() => {
+    if (backgrounds.length === 0) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % backgrounds.length);
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [backgrounds.length]);
+
+  if (backgrounds.length === 0) {
+    return (
+      <div className="fixed inset-0 -z-10 bg-gradient-to-br from-background via-background to-primary/5" />
+    );
+  }
 
   return (
     <div className="fixed inset-0 -z-10">
-      {slides.map((src, index) => (
+      {backgrounds.map((bg, index) => (
         <div
-          key={src}
+          key={bg.name}
           className="absolute inset-0 transition-opacity duration-1000 ease-in-out"
           style={{ opacity: index === currentIndex ? 1 : 0 }}
         >
           <img
-            src={src}
-            alt={`Mona album ${index + 1}`}
+            src={bg.url}
+            alt={`Background ${index + 1}`}
             className="h-full w-full object-cover"
           />
           <div className="absolute inset-0 bg-black/60" />
